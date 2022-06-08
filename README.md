@@ -30,13 +30,13 @@ joblib==1.0.1
 ### Examples
 ```
 cd examples
-# use trained model for prediction (input is protein)
+*# use trained model for prediction (input is protein)*
 python rtmscore.py -p ./1qkt_p.pdb -l ./1qkt_decoys.sdf -rl ./1qkt_l.sdf -gen_pocket -c 10.0 -m ../trained_models/rtmscore_model1.pth
-# use trained model for prediction (input is pocket)
+*# use trained model for prediction (input is pocket)*
 python rtmscore.py -p ./1qkt_p_pocket_10.0.pdb -l ./1qkt_decoys.sdf -m ../trained_models/rtmscore_model1.pth
-# calculate the atom contributions of the score
+*# calculate the atom contributions of the score*
 python rtmscore.py -p ./1qkt_p_pocket_10.0.pdb -l ./1qkt_decoys.sdf -ac -m ../trained_models/rtmscore_model1.pth
-# calculate the residue contributions of the score
+*# calculate the residue contributions of the score*
 python rtmscore.py -p ./1qkt_p_pocket_10.0.pdb -l ./1qkt_decoys.sdf -rc -m ../trained_models/rtmscore_model1.pth
 ```
 
