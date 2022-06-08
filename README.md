@@ -27,16 +27,23 @@ joblib==1.0.1
 ```conda create --prefix xxx --file ./requirements_conda.txt```
 ```pip install -r ./requirements_pip.txt```
 
-### Examples
+### Examples for using the trained model for prediction
 ```
 cd examples
-___# use trained model for prediction (input is protein)___
+___# input is protein (need to extract the pocket first)___
+```
 python rtmscore.py -p ./1qkt_p.pdb -l ./1qkt_decoys.sdf -rl ./1qkt_l.sdf -gen_pocket -c 10.0 -m ../trained_models/rtmscore_model1.pth
-*# use trained model for prediction (input is pocket)*
+```
+*# input is pocket
+```
 python rtmscore.py -p ./1qkt_p_pocket_10.0.pdb -l ./1qkt_decoys.sdf -m ../trained_models/rtmscore_model1.pth
+```
 *# calculate the atom contributions of the score*
+```
 python rtmscore.py -p ./1qkt_p_pocket_10.0.pdb -l ./1qkt_decoys.sdf -ac -m ../trained_models/rtmscore_model1.pth
+```
 *# calculate the residue contributions of the score*
+```
 python rtmscore.py -p ./1qkt_p_pocket_10.0.pdb -l ./1qkt_decoys.sdf -rc -m ../trained_models/rtmscore_model1.pth
 ```
 
