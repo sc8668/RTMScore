@@ -31,7 +31,7 @@ pip install -r ./requirements_pip.txt
 
 ### Examples for using the trained model for prediction
 ```
-cd examples
+cd example
 ```
 ___# input is protein (need to extract the pocket first)___
 ```
