@@ -29,8 +29,8 @@ conda create --prefix xxx --file ./requirements_conda.txt
 pip install -r ./requirements_pip.txt
 ```
 ### Datasets
-PDBbind([http://www.pdbbind.org.cn])
-CASF-2016([http://www.pdbbind.org.cn])
+[PDBbind](http://www.pdbbind.org.cn)
+[CASF-2016](http://www.pdbbind.org.cn)
 cross-docking dataset https://zenodo.org/record/5525936    
 DEKOIS2.0 can found at https://zenodo.org/record/5525936 and https://zenodo.org/record/6623202
 
