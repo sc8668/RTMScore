@@ -4,14 +4,12 @@ import numpy as np
 import random
 import torch.nn.functional as F
 from torch.distributions import Normal
-#from torch_scatter import scatter_add
+from torch_scatter import scatter_add
 from sklearn import metrics
 from sklearn.metrics import roc_auc_score, mean_squared_error, precision_recall_curve, auc
 from scipy.stats import pearsonr, spearmanr
-#from copy import deepcopy
-#import datetime
 import dgl
-#th.autograd.set_detect_anomaly(True)
+
 
 class Meter(object):
     def __init__(self, mean=None, std=None):
@@ -506,6 +504,7 @@ def mdn_loss_fn(pi, sigma, mu, y, eps=1e-10):
     return loss
 
 
+
 def run_a_train_epoch(epoch, model, data_loader, optimizer, aux_weight=0.001, device='cpu'):
 	model.train()
 	total_loss = 0
@@ -513,15 +512,14 @@ def run_a_train_epoch(epoch, model, data_loader, optimizer, aux_weight=0.001, de
 	atom_loss = 0
 	bond_loss = 0
 	for batch_id, batch_data in enumerate(data_loader):
-		pdbids, bg = batch_data
-		bg = bg.to(device)
-		bgp = dgl.batch([g[("prot","pp","prot")] for g in dgl.unbatch(bg)])
-		bgl = dgl.batch([g[("lig","ll","lig")] for g in dgl.unbatch(bg)])
-		bgpl = dgl.batch([g[("prot","pl","lig")] for g in dgl.unbatch(bg)])
-		atom_labels = th.argmax(bgl.ndata["feats"][:,:17], dim=1, keepdim=False)
-		bond_labels = th.argmax(bgl.edata["feats"][:,:4], dim=1, keepdim=False)
+		pdbids, bgl, bgp = batch_data
+		bgl = bgl.to(device)
+		bgp = bgp.to(device)
 		
-		pi, sigma, mu, dist, atom_types, bond_types = model(bgp, bgl, bgpl)
+		atom_labels = th.argmax(bgl.ndata["atom"][:,:17], dim=1, keepdim=False)
+		bond_labels = th.argmax(bgl.edata["bond"][:,:4], dim=1, keepdim=False)
+		
+		pi, sigma, mu, dist, atom_types, bond_types, batch = model(bgp, bgl)
 		
 		mdn = mdn_loss_fn(pi, sigma, mu, dist)
 		mdn = mdn[th.where(dist <= model.dist_threhold)[0]]
@@ -531,7 +529,6 @@ def run_a_train_epoch(epoch, model, data_loader, optimizer, aux_weight=0.001, de
 		loss = mdn + (atom * aux_weight) + (bond * aux_weight)
 		
 		optimizer.zero_grad()
-		#with th.autograd.detect_anomaly():
 		loss.backward()
 		optimizer.step()
 		
@@ -540,9 +537,8 @@ def run_a_train_epoch(epoch, model, data_loader, optimizer, aux_weight=0.001, de
 		atom_loss += atom.item() * bgl.batch_size
 		bond_loss += bond.item() * bgl.batch_size
 		
-		#print('Step, Total Loss: {:.3f}, MDN: {:.3f}'.format(total_loss, mdn_loss))
 		if np.isinf(mdn_loss) or np.isnan(mdn_loss): break
-		del bg, atom_labels, bond_labels, pi, sigma, mu, dist, atom_types, bond_types, mdn, atom, bond, loss
+		del bgl, bgp, atom_labels, bond_labels, pi, sigma, mu, dist, atom_types, bond_types, batch, mdn, atom, bond, loss
 		th.cuda.empty_cache()
 		
 	return total_loss / len(data_loader.dataset), mdn_loss / len(data_loader.dataset), atom_loss / len(data_loader.dataset), bond_loss / len(data_loader.dataset)
@@ -559,36 +555,30 @@ def run_an_eval_epoch(model, data_loader, pred=False, atom_contribution=False, r
 	res_contrs = []
 	with th.no_grad():
 		for batch_id, batch_data in enumerate(data_loader):
-			pdbids, bg = batch_data
-			bg = bg.to(device)
-			bgp = dgl.batch([g[("prot","pp","prot")] for g in dgl.unbatch(bg)])
-			bgl = dgl.batch([g[("lig","ll","lig")] for g in dgl.unbatch(bg)])
-			bgpl = dgl.batch([g[("prot","pl","lig")] for g in dgl.unbatch(bg)])
-			atom_labels = th.argmax(bgl.ndata["feats"][:,:17], dim=1, keepdim=False)
-			bond_labels = th.argmax(bgl.edata["feats"][:,:4], dim=1, keepdim=False)
+			pdbids, bgl, bgp = batch_data
+			bgl = bgl.to(device)
+			bgp = bgp.to(device)
+			atom_labels = th.argmax(bgl.ndata["atom"][:,:17], dim=1, keepdim=False)
+			bond_labels = th.argmax(bgl.edata["bond"][:,:4], dim=1, keepdim=False)
 			
-			pi, sigma, mu, dist, atom_types, bond_types = model(bgp, bgl, bgpl)
+			pi, sigma, mu, dist, atom_types, bond_types, batch = model(bgp, bgl)
 			
 			if pred or atom_contribution or res_contribution:
 				prob = calculate_probablity(pi, sigma, mu, dist)
 				if dist_threhold is not None:
 					prob[th.where(dist > dist_threhold)[0]] = 0.
-				with bgpl.local_scope():
-					if pred:
-						bgpl.edata["prob"] = prob
-						probx = dgl.sum_edges(bgpl, 'prob')
-						#probx = scatter_add(prob, batch, dim=0, dim_size=bgl.batch_size)
-						probs.append(probx)
+				
+				batch = batch.to(device)
+				if pred:
+					probx = scatter_add(prob, batch, dim=0, dim_size=bgl.batch_size)
+					probs.append(probx)
+				if atom_contribution or res_contribution:				
+					contribs = [prob[batch==i].reshape((bgl.batch_num_nodes()[i], bgp.batch_num_nodes()[i])) for i in range(bgl.batch_size)]
 					if atom_contribution:
-						bgpl.edata["prob"] = prob
-						bgpl.update_all(dgl.function.copy_e('prob', 'prob'), dgl.function.sum('prob', 'at_contrib'))
-						at_contrs.extend([g.ndata["at_contrib"]["lig"].cpu().detach().numpy() for g in dgl.unbatch(bgpl)])
+						at_contrs.extend([contribs[i].sum(1).cpu().detach().numpy() for i in range(bgl.batch_size)])
 					if res_contribution:
-						bglp = dgl.batch([g[("prot","pl","lig")].reverse() for g in dgl.unbatch(bg)])
-						bglp.edata["prob"] = prob
-						bglp.update_all(dgl.function.copy_e('prob', 'prob'), dgl.function.sum('prob', 'res_contrib'))
-						res_contrs.extend([g.ndata["res_contrib"]["prot"].cpu().detach().numpy() for g in dgl.unbatch(bglp)])
-
+						res_contrs.extend([contribs[i].sum(0).cpu().detach().numpy() for i in range(bgl.batch_size)])
+			
 			else:
 				mdn = mdn_loss_fn(pi, sigma, mu, dist)
 				mdn = mdn[th.where(dist <= model.dist_threhold)[0]]
@@ -603,7 +593,7 @@ def run_an_eval_epoch(model, data_loader, pred=False, atom_contribution=False, r
 				bond_loss += bond.item() * bgl.batch_size
 				
 		
-			del bgl, bgp, atom_labels, bond_labels, pi, sigma, mu, dist, atom_types, bond_types
+			del bgl, bgp, atom_labels, bond_labels, pi, sigma, mu, dist, atom_types, bond_types, batch
 			th.cuda.empty_cache()
 	
 	if atom_contribution or res_contribution:
@@ -628,32 +618,21 @@ def calculate_probablity(pi, sigma, mu, y):
 	
     return prob
 
-def collate(data):
-	pdbids, graphs = map(list, zip(*data))
-	bg = dgl.batch(graphs)
-	for nty in bg.ntypes:
-		bg.set_n_initializer(dgl.init.zero_initializer, ntype=nty)
-	for ety in bg.canonical_etypes:
-		bg.set_e_initializer(dgl.init.zero_initializer, etype=ety)
-	#labels = th.stack(labels, dim=0)
-	#mask = th.stack(mask, dim=0)	
-	return pdbids, bg
 
-#def collate(data):
-#	pdbids, graphsl, graphsp = map(list, zip(*data))
-#	bgl = dgl.batch(graphsl)
-#	bgp = dgl.batch(graphsp)
-#	for nty in bgl.ntypes:
-#		bgl.set_n_initializer(dgl.init.zero_initializer, ntype=nty)
-#	for ety in bgl.canonical_etypes:
-#		bgl.set_e_initializer(dgl.init.zero_initializer, etype=ety)
-#	for nty in bgp.ntypes:
-#		bgp.set_n_initializer(dgl.init.zero_initializer, ntype=nty)
-#	for ety in bgp.canonical_etypes:
-#		bgp.set_e_initializer(dgl.init.zero_initializer, etype=ety)
-#	#labels = th.stack(labels, dim=0)
-#	#mask = th.stack(mask, dim=0)	
-#	return pdbids, bgl, bgp
+
+def collate(data):
+	pdbids, graphsl, graphsp = map(list, zip(*data))
+	bgl = dgl.batch(graphsl)
+	bgp = dgl.batch(graphsp)
+	for nty in bgl.ntypes:
+		bgl.set_n_initializer(dgl.init.zero_initializer, ntype=nty)
+	for ety in bgl.canonical_etypes:
+		bgl.set_e_initializer(dgl.init.zero_initializer, etype=ety)
+	for nty in bgp.ntypes:
+		bgp.set_n_initializer(dgl.init.zero_initializer, ntype=nty)
+	for ety in bgp.canonical_etypes:
+		bgp.set_e_initializer(dgl.init.zero_initializer, etype=ety)	
+	return pdbids, bgl, bgp
 
 
 def set_random_seed(seed=10):
