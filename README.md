@@ -32,8 +32,8 @@ pip install -r ./requirements_pip.txt
 [PDBbind](http://www.pdbbind.org.cn)    
 [CASF-2016](http://www.pdbbind.org.cn)    
 [PDBbind-CrossDocked-Core](https://zenodo.org/record/5525936)      
-[DEKOIS2.0](https://zenodo.org/record/6623202)
-[DUD-E](http://dude.docking.org/; https://zenodo.org/record/6623202)
+[DEKOIS2.0](https://zenodo.org/record/6623202)       
+[DUD-E](https://zenodo.org/record/6623202)
 
 ### Examples for using the trained model for prediction
 ```
