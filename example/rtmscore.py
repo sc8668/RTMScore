@@ -5,7 +5,7 @@ import pandas as pd
 import argparse
 import os, sys
 import MDAnalysis as mda
-sys.path.append("/home/shenchao/resdocktest/deepdock2")
+sys.path.append("/home/shenchao/resdocktest2/rtmscore2")
 from torch.utils.data import DataLoader
 from RTMScore.data.data import VSDataset
 from RTMScore.model.utils import collate, run_an_eval_epoch
@@ -117,7 +117,6 @@ def scoring(prot, lig, modpath,
 					hidden_dim=kwargs["hidden_dim"], 
 					n_gaussians=kwargs["n_gaussians"], 
 					dropout_rate=kwargs["dropout_rate"], 
-					disttype=kwargs["disttype"], 
 					dist_threhold=kwargs["dist_threhold"]).to(kwargs['device'])
 	
 	checkpoint = th.load(modpath, map_location=th.device(kwargs['device']))
@@ -155,7 +154,6 @@ def main():
 	args["dist_threhold"] = 5
 	args['device'] = 'cuda' if th.cuda.is_available() else 'cpu'
 	args["num_workers"] = 10
-	args["disttype"] = "min"  ##"min","ca","center"
 	args["num_node_featsp"] = 41
 	args["num_node_featsl"] = 41
 	args["num_edge_featsp"] = 5
