@@ -4,7 +4,7 @@ from joblib import Parallel, delayed
 import pandas as pd
 import os, sys
 import pickle
-sys.path.append("/home/shenchao/resdocktest/deepdock2")
+sys.path.append("/home/shenchao/resdocktest2/rtmscore2")
 from torch.utils.data import DataLoader
 from RTMScore.data.data import VSDataset
 from RTMScore.model.utils import collate, run_an_eval_epoch
@@ -20,13 +20,12 @@ args['seeds'] = 126
 args["num_workers"] = 10
 args["model_path"] = "/home/shenchao/resdocktest/deepdock2/trained_models/rtmscore_model1.pth"
 args["cutoff"] = 10.0
-args["disttype"] = "min"  ##"min","ca","center"
 args["num_node_featsp"] = 41
 args["num_node_featsl"] = 41
 args["num_edge_featsp"] = 5
 args["num_edge_featsl"] = 10
-args["hidden_dim0"] = 128  
-args["hidden_dim"] = 128 
+args["hidden_dim0"] = 128 
+args["hidden_dim"] = 128
 args["n_gaussians"] = 10
 args["dropout_rate"] = 0.10
 args["outprefix"] = "rtmscore1x5"
@@ -92,7 +91,6 @@ def scoring(prot, lig, modpath,
 					hidden_dim=kwargs["hidden_dim"], 
 					n_gaussians=kwargs["n_gaussians"], 
 					dropout_rate=kwargs["dropout_rate"], 
-					disttype=kwargs["disttype"], 
 					dist_threhold=kwargs["dist_threhold"]).to(kwargs['device'])
 	
 	checkpoint = th.load(modpath, map_location=th.device(kwargs['device']))
@@ -129,13 +127,14 @@ def score_compound0(pdbid, prefix):
 	ids.pop(-1)
 	ids.append("%s_ligand"%pdbid)
 	return ids, scores
-	
-	
+
+
 def score_compoundxxx(pdbid, prefix):
 	ids1, scores1 = score_compound(pdbid, prefix)
 	ids2, scores2 = score_compound0(pdbid, prefix)
 	return ids1+ids2, np.append(scores1,scores2)
-	
+
+
 
 pdbids = [x for x in os.listdir("/home/shenchao/test/CASF-2016/coreset") if os.path.isdir("/home/shenchao/test/CASF-2016/coreset/%s"%(x))]	
 pdbids1 = [x for x in os.listdir("/home/shenchao/pdbbind/v2020-refined") if os.path.isdir("/home/shenchao/pdbbind/v2020-refined/%s"%(x))]	

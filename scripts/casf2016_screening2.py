@@ -4,7 +4,7 @@ from joblib import Parallel, delayed
 import pandas as pd
 import os, sys
 import pickle
-sys.path.append("/home/shenchao/resdocktest/deepdock2")
+sys.path.append("/home/shenchao/resdocktest2/rtmscore2")
 from torch.utils.data import DataLoader
 from RTMScore.data.data import VSDataset
 from RTMScore.model.utils import collate, run_an_eval_epoch
@@ -14,19 +14,19 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 args={}
 args["batch_size"] = 128
 args["aux_weight"] = 0.001
+#args["dist_threhold"] = 3.
 args["dist_threhold"] = 5
 args['device'] = 'cuda' if th.cuda.is_available() else 'cpu'
 args['seeds'] = 126
 args["num_workers"] = 48
 args["model_path"] = "/home/shenchao/resdocktest/deepdock2/trained_models/rtmscore_model1.pth"
 args["cutoff"] = 10.0
-args["disttype"] = "min"  ##"min","ca","center"
 args["num_node_featsp"] = 41
 args["num_node_featsl"] = 41
 args["num_edge_featsp"] = 5
 args["num_edge_featsl"] = 10
 args["hidden_dim0"] = 128
-args["hidden_dim"] = 128 
+args["hidden_dim"] = 128
 args["n_gaussians"] = 10
 args["dropout_rate"] = 0.10
 args["outprefix"] = "rtmscore1x5"
@@ -91,7 +91,6 @@ def scoring(prot, lig, modpath,
 					hidden_dim=kwargs["hidden_dim"], 
 					n_gaussians=kwargs["n_gaussians"], 
 					dropout_rate=kwargs["dropout_rate"], 
-					disttype=kwargs["disttype"], 
 					dist_threhold=kwargs["dist_threhold"]).to(kwargs['device'])
 	
 	checkpoint = th.load(modpath, map_location=th.device(kwargs['device']))
@@ -158,7 +157,5 @@ for res in results:
 
 with open("%s_screening.pkl"%args["outprefix"],"wb") as dbFile:
 	pickle.dump(results,dbFile)
-
-
 
 

@@ -4,15 +4,15 @@ import dgl
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 import sys
-sys.path.append("/home/shenchao/resdocktest/deepdock2")
+sys.path.append("/home/shenchao/resdocktest2/rtmscore2")
 from RTMScore.data.data import PDBbindDataset
-from RTMScore.model.model2 import RTMScore, DGLGraphTransformer #LigandNet, TargetNet
+from RTMScore.model.model2 import RTMScore, DGLGraphTransformer 
 from RTMScore.model.utils import collate, EarlyStopping, set_random_seed, run_a_train_epoch, run_an_eval_epoch, mdn_loss_fn
 import torch.multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system')
 args={}
 args["num_epochs"] = 5000
-args["batch_size"] = 128
+args["batch_size"] = 64#128
 args["aux_weight"] = 0.001
 args['patience'] = 70 
 args["num_workers"] = 10
@@ -22,13 +22,11 @@ args['lr'] = 3
 args['weight_decay'] = 5
 args['device'] = 'cuda' if th.cuda.is_available() else 'cpu'
 args['seeds'] = 126
-args["data_dir"] = "/home/shenchao/resdocktest"
+args["data_dir"] = "/home/shenchao/resdocktest2/dataset"
 args["train_prefix"] = "v2020_train"
 #args["test1_prefix"] = "v2020_casf"
 #args["test2_prefix"] = "v2020_core"
-args["disttype"] = "min"  ##"ca","ce"
 args["valnum"] = 1500
-#args["rgcn_hidden_feats"] = [64, 64, 64]
 args["hidden_dim0"] = 128
 args["hidden_dim"] = 128 
 args["n_gaussians"] = 10
@@ -36,17 +34,22 @@ args["dropout_rate"] = 0.10
 args["dist_threhold"] = 7.
 
 
-data = PDBbindDataset(ids="%s/%s_idsresx.npy"%(args["data_dir"], args["train_prefix"]),
-					  graphs="%s/%sresx.bin"%(args["data_dir"], args["train_prefix"])
+
+data = PDBbindDataset(ids="%s/%s_ids.npy"%(args["data_dir"], args["train_prefix"]),
+					  ligs="%s/%s_l.bin"%(args["data_dir"], args["train_prefix"]),
+					  prots="%s/%s_p.bin"%(args["data_dir"], args["train_prefix"])
 					  )
 
 train_inds, val_inds = data.train_and_test_split(valnum=args["valnum"], seed=args['seeds'])
 train_data = PDBbindDataset(ids=data.pdbids[train_inds],
-							graphs=np.array(data.graphs)[train_inds]
+							ligs=np.array(data.graphsl)[train_inds],
+							prots=np.array(data.graphsp)[train_inds]							
 							)
 val_data = PDBbindDataset(ids=data.pdbids[val_inds],
-							graphs=np.array(data.graphs)[val_inds]
+							ligs=np.array(data.graphsl)[val_inds],
+							prots=np.array(data.graphsp)[val_inds]
 							)
+							
 #test_data1 = PDBbindDataset(ids="%s/%s_idsresx.npy"%(args["data_dir"], args["test1_prefix"]),
 #					  graphs="%s/%sresx.bin"%(args["data_dir"], args["test1_prefix"])
 #					  )
@@ -82,7 +85,6 @@ model = RTMScore(ligmodel, protmodel,
 				hidden_dim=args["hidden_dim"], 
 				n_gaussians=args["n_gaussians"], 
 				dropout_rate=args["dropout_rate"],
-				disttype=args["disttype"], 
 				dist_threhold=args["dist_threhold"]).to(args['device'])
 
 optimizer = th.optim.Adam(model.parameters(), lr=10**-args['lr'], weight_decay=10**-args['weight_decay'])
@@ -125,5 +127,11 @@ total_loss_val, mdn_loss_val, atom_loss_val, bond_loss_val = run_an_eval_epoch(m
 
 print("total_loss_train:%s, mdn_loss_train:%s, atom_loss_train:%s, bond_loss_train:%s"%(total_loss_train, mdn_loss_train, atom_loss_train, bond_loss_train))
 print("total_loss_val:%s, mdn_loss_val:%s, atom_loss_val:%s, bond_loss_val:%s"%(total_loss_val, mdn_loss_val, atom_loss_val, bond_loss_val))
+
+
+
+
+
+
 
 
