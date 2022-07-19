@@ -10,7 +10,7 @@ from joblib import Parallel, delayed
 import os
 import tempfile
 import shutil
-from ..feats.mol2graph_rdmda_res import mol_to_graph, load_mol, prot_to_graph, obtain_inter_graphs
+from ..feats.mol2graph_rdmda_res import mol_to_graph, load_mol, prot_to_graph
 from ..feats.extract_pocket_prody import extract_pocket
 
 
@@ -19,9 +19,8 @@ from ..feats.extract_pocket_prody import extract_pocket
 class PDBbindDataset(Dataset):
 	def __init__(self,  
 				ids=None,
-				graphs=None
-				#ligs=None,
-				#prots=None
+				ligs=None,
+				prots=None
 				):
 		if isinstance(ids,np.ndarray) or isinstance(ids,list):
 			self.pdbids = ids
@@ -30,36 +29,31 @@ class PDBbindDataset(Dataset):
 				self.pdbids = np.load(ids)
 			except:
 				raise ValueError('the variable "ids" should be numpy.ndarray or list or a file to store numpy.ndarray')
-		#if isinstance(ligs,np.ndarray) or isinstance(ligs,list):
-		#	self.graphsl = ligs
-		#else:
-		#	try:
-		#		self.graphsl,_ = load_graphs(ligs)
-		#	except:
-		#		raise ValueError('the variable "ligs" should be numpy.ndarray or list or a file to store DGLGraphs')	
-		#if isinstance(prots,np.ndarray) or isinstance(prots,list):
-		#	self.graphsp = prots
-		#else:
-		#	try:
-		#		self.graphsp,_ = load_graphs(prots)
-		#	except:
-		#		raise ValueError('the variable "prots" should be numpy.ndarray or list or a file to store DGLGraphs')	
-		if isinstance(graphs, np.ndarray) or isinstance(graphs,list):
-			if isinstance(graphs[0], dgl.DGLGraph):
-				self.graphs = graphs
+		if isinstance(ligs,np.ndarray) or isinstance(ligs,tuple) or isinstance(ligs,list):
+			if isinstance(ligs[0],dgl.DGLGraph):
+				self.graphsl = ligs
 			else:
-				raise ValueError('Graphs should be a list of dgl.DGLHeteroGraph objects or a file to store DGLGraphs')
+				raise ValueError('the variable "ligs" should be a set of (or a file to store) dgl.DGLGraph objects.')
 		else:
 			try:
-				self.graphs, _ = load_graphs(graphs) 		
+				self.graphsl, _ = load_graphs(ligs) 
 			except:
-				raise ValueError('Graphs should be a list of dgl.DGLHeteroGraph objects or a file to store DGLGraphs')
+				raise ValueError('the variable "ligs" should be a set of (or a file to store) dgl.DGLGraph objects.')
 		
-		self.graphs = list(self.graphs)		
-		assert len(self.pdbids) == len(self.graphs)
-		#self.graphsl = list(self.graphsl)
-		#self.graphsp = list(self.graphsp)
-		#assert len(self.pdbids) == len(self.graphsl) == len(self.graphsp)
+		if isinstance(prots,np.ndarray) or isinstance(prots,tuple) or isinstance(prots,list):
+			if isinstance(prots[0],dgl.DGLGraph):
+				self.graphsp = prots
+			else:
+				raise ValueError('the variable "prots" should be a set of (or a file to store) dgl.DGLGraph objects.')	
+		else:
+			try:
+				self.graphsp, _ = load_graphs(prots) 
+			except:
+				raise ValueError('the variable "prots" should be a set of (or a file to store) dgl.DGLGraph objects.')
+		
+		self.graphsl = list(self.graphsl)
+		self.graphsp = list(self.graphsp)
+		assert len(self.pdbids) == len(self.graphsl) == len(self.graphsp)
 		
 	def __getitem__(self, idx): 
 		""" Get graph and label by index
@@ -73,8 +67,8 @@ class PDBbindDataset(Dataset):
 		-------
 		(dgl.DGLGraph, Tensor)
 		"""
-		return self.pdbids[idx], self.graphs[idx]
-		#return self.pdbids[idx], self.graphsl[idx], self.graphsp[idx]
+		return self.pdbids[idx], self.graphsl[idx], self.graphsp[idx]
+	
 	
 	def __len__(self):
 		"""Number of graphs in the dataset"""
@@ -94,7 +88,6 @@ class PDBbindDataset(Dataset):
 class VSDataset(Dataset):
 	def __init__(self,  
 				ids=None,
-				graphs=None,
 				ligs=None,
 				prot=None,
 				gen_pocket=False,
@@ -104,7 +97,7 @@ class VSDataset(Dataset):
 				use_chirality=True,
 				parallel=True			
 				):
-		#self.graphp=None
+		self.graphp=None
 		self.graphsl=None
 		self.pocketdir = None
 		self.prot = None
@@ -114,76 +107,55 @@ class VSDataset(Dataset):
 		self.use_chirality=use_chirality
 		self.parallel=parallel
 		
-		if graphs is not None:
-			if isinstance(graphs, np.ndarray) or isinstance(graphs,list):
-				if isinstance(graphs[0], dgl.DGLGraph):
-					self.graphs = graphs
-				else:
-					raise ValueError('Graphs should be a list of dgl.DGLHeteroGraph objects or a file to store DGLGraphs')
+		if isinstance(prot, Chem.rdchem.Mol):
+			assert gen_pocket == False
+			self.prot = prot
+			self.graphp = prot_to_graph(self.prot, cutoff)
+		else:
+			if gen_pocket:
+				if cutoff is None or reflig is None:
+					raise ValueError('If you want to generate the pocket, the cutoff and the reflig should be given')
+				try:
+					self.pocketdir = tempfile.mkdtemp()
+					extract_pocket(prot, reflig, cutoff, 
+								protname="temp",
+								workdir=self.pocketdir)
+					pocket = load_mol("%s/temp_pocket_%s.pdb"%(self.pocketdir, cutoff), 
+								explicit_H=explicit_H, use_chirality=use_chirality)
+					self.prot = pocket
+					self.graphp = prot_to_graph(self.prot, cutoff)
+				except:
+					raise ValueError('The graph of pocket cannot be generated')
 			else:
 				try:
-					self.graphs, _ = load_graphs(graphs) 		
-				except:
-					raise ValueError('Graphs should be a list of dgl.DGLHeteroGraph objects or a file to store DGLGraphs')				
-		else:
-			if ligs is None or prot is None:
-				raise ValueError('If the argument "graphs" is not given, the arguments "prots" and "ligs" should be provided!')
-			else:
-				if isinstance(prot, Chem.rdchem.Mol):
-					assert gen_pocket == False
-					self.prot = prot
+					pocket = load_mol(prot, explicit_H=explicit_H, use_chirality=use_chirality)
+					#self.graphp = mol_to_graph(pocket, explicit_H=explicit_H, use_chirality=use_chirality)	
+					self.prot = pocket
 					self.graphp = prot_to_graph(self.prot, cutoff)
-				else:
-					if gen_pocket:
-						if cutoff is None or reflig is None:
-							raise ValueError('If you want to generate the pocket, the cutoff and the reflig should be given')
-						try:
-							self.pocketdir = tempfile.mkdtemp()
-							extract_pocket(prot, reflig, cutoff, 
-										protname="temp",
-										workdir=self.pocketdir)
-							pocket = load_mol("%s/temp_pocket_%s.pdb"%(self.pocketdir, cutoff), 
-										explicit_H=explicit_H, use_chirality=use_chirality)
-							self.prot = pocket
-							self.graphp = prot_to_graph(self.prot, cutoff)
-						except:
-							raise ValueError('The graph of pocket cannot be generated')
-					else:
-						try:
-							pocket = load_mol(prot, explicit_H=explicit_H, use_chirality=use_chirality)
-							#self.graphp = mol_to_graph(pocket, explicit_H=explicit_H, use_chirality=use_chirality)	
-							self.prot = pocket
-							self.graphp = prot_to_graph(self.prot, cutoff)
-						except:
-							raise ValueError('The graph of pocket cannot be generated')
-							#try:
-							#	self.graphp,_ = load_graphs(prot)
-							#	self.graphp = self.graphp[0]
-							#except:
-							#	raise ValueError('The graph of pocket cannot be generated')
+				except:
+					raise ValueError('The graph of pocket cannot be generated')
 			
-			if isinstance(ligs,np.ndarray) or isinstance(ligs,list):
-				if isinstance(ligs[0], Chem.rdchem.Mol):
-					self.ligs = ligs
-					#self.graphsl = self._mol_to_graph()
-					self.graphs = self._mol_to_pl(self.ligs)
-				else:
-					raise ValueError('Ligands should be a list of rdkit.Chem.rdchem.Mol objects')
+		if isinstance(ligs,np.ndarray) or isinstance(ligs,list):
+			if isinstance(ligs[0], Chem.rdchem.Mol):
+				self.ligs = ligs
+				self.graphsl = self._mol_to_graph()
+			elif isinstance(ligs[0], dgl.DGLGraph):
+				self.graphsl = ligs
 			else:
-				if ligs.endswith(".mol2"):
-					lig_blocks = self._mol2_split(ligs)	
-					self.ligs = [Chem.MolFromMol2Block(lig_block) for lig_block in lig_blocks]
-					#self.graphsl = self._mol_to_graph()
-					self.graphs = self._mol_to_pl(self.ligs)
-				elif ligs.endswith(".sdf"):
-					lig_blocks = self._sdf_split(ligs)	
-					self.ligs = [Chem.MolFromMolBlock(lig_block) for lig_block in lig_blocks]
-					#self.graphsl = self._mol_to_graph()
-					self.graphs = self._mol_to_pl(self.ligs)
-				else:
-					#try:	
-					#	self.graphsl,_ = load_graphs(ligs)
-					#except:
+				raise ValueError('Ligands should be a list of rdkit.Chem.rdchem.Mol objects')
+		else:
+			if ligs.endswith(".mol2"):
+				lig_blocks = self._mol2_split(ligs)	
+				self.ligs = [Chem.MolFromMol2Block(lig_block) for lig_block in lig_blocks]
+				self.graphsl = self._mol_to_graph()
+			elif ligs.endswith(".sdf"):
+				lig_blocks = self._sdf_split(ligs)	
+				self.ligs = [Chem.MolFromMolBlock(lig_block) for lig_block in lig_blocks]
+				self.graphsl = self._mol_to_graph()
+			else:
+				try:	
+					self.graphsl,_ = load_graphs(ligs)
+				except:
 					raise ValueError('Only the ligands with .sdf or .mol2 or a file to genrate DGLGraphs will be supported')
 		
 		if ids is None:
@@ -194,13 +166,10 @@ class VSDataset(Dataset):
 		else:
 			self.idsx = ids
 
-		#self.graphsl = list(self.graphsl)
-		#assert len(self.ids) == len(self.graphsl)
-		self.ids, self.graphs = zip(*filter(lambda x: x[1] != None, zip(self.idsx, self.graphs)))
+		self.ids, self.graphsl = zip(*filter(lambda x: x[1] != None, zip(self.idsx, self.graphsl)))
 		self.ids = list(self.ids)
-		self.graphs = list(self.graphs)
-		#self.badids = list(set(self.idsx)-set(self.ids))
-		assert len(self.ids) == len(self.graphs)
+		self.graphsl = list(self.graphsl)
+		assert len(self.ids) == len(self.graphsl)
 		if self.pocketdir is not None:
 			shutil.rmtree(self.pocketdir)
 		
@@ -216,7 +185,7 @@ class VSDataset(Dataset):
         -------
         (dgl.DGLGraph, Tensor)
         """
-		return self.ids[idx], self.graphs[idx]
+		return self.ids[idx], self.graphsl[idx], self.graphp
 	
 	def __len__(self):
 		"""Number of graphs in the dataset"""
@@ -230,32 +199,23 @@ class VSDataset(Dataset):
 		contents = open(infile, 'r').read()
 		return [c + "$$$$\n" for c in contents.split("$$$$\n")[:-1]]
 	
-	def _mol_to_pl0(self, lig):
-		#gl = mol_to_graph(lig, explicit_H=self.explicit_H, use_chirality=self.use_chirality)
+	def _mol_to_graph0(self, lig):
 		try:
-			gx = obtain_inter_graphs(self.prot, lig, gp=self.graphp, cutoff=self.cutoff)
+			gx = mol_to_graph(lig, explicit_H=self.explicit_H, use_chirality=self.use_chirality)
 		except:
-			print("failed to scoring for {} and {}".format(self.prot, lig))
+			print("failed to scoring for {} and {}".format(self.graphp, lig))
 			return None
 		return gx
-	
-	def _mol_to_pl(self, ligs):
+
+	def _mol_to_graph(self):
 		if self.parallel:
-			graphs = Parallel(n_jobs=-1)(delayed(self._mol_to_pl0)(lig) for lig in ligs)
+			return Parallel(n_jobs=-1, backend="threading")(delayed(self._mol_to_graph0)(lig) for lig in self.ligs)
 		else:
 			graphs = []
-			for lig in ligs:
-				graphs.append(self._mol_to_pl0(lig))
-		return graphs	
-		
-	#def _mol_to_graph(self):
-	#	if self.parallel:
-	#		return Parallel(n_jobs=-1)(delayed(mol_to_graph)(lig, explicit_H=self.explicit_H, use_chirality=self.use_chirality) for lig in self.ligs)
-	#	else:
-	#		graphs = []
-	#		for lig in self.ligs:
-	#			graphs.append(mol_to_graph(lig, explicit_H=self.explicit_H, use_chirality=self.use_chirality))
-	#		return graphs
+			for lig in self.ligs:
+				graphs.append(self._mol_to_graph0(lig))
+			return graphs
+	
 	def get_ligname(self, m):
 		if m is None:
 			return None
@@ -265,6 +225,5 @@ class VSDataset(Dataset):
 			else:
 				return None
 	
+
 	
-	
-				
