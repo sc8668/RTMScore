@@ -5,7 +5,8 @@ import pandas as pd
 import argparse
 import os, sys
 import MDAnalysis as mda
-sys.path.append("/home/shenchao/resdocktest2/rtmscore2")
+#sys.path.append("/home/shenchao/resdocktest2/rtmscore2")
+sys.path.append(os.path.abspath(__file__).replace("rtmscore.py",".."))
 from torch.utils.data import DataLoader
 from RTMScore.data.data import VSDataset
 from RTMScore.model.utils import collate, run_an_eval_epoch
